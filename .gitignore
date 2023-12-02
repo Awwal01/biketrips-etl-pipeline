@@ -1,0 +1,11 @@
+airflow/logs/*
+airflow/logs
+logs/*
+*.env
+airflow/dags/data_pipeline.2_temp.1.py  
+airflow/dags/data_pipeline.2_temp.py  
+airflow/dags/data_pipeline.py  
+airflow/dags/orig_data_pipeline.py  
+ariflow/dags/__pycache__  
+airflow/dags/test_dot_envr.py
+scripts.zip

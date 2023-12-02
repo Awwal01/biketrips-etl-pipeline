@@ -1,0 +1,7 @@
+logs/*
+*.env
+dags/data_pipeline.2_temp.1.py  
+dags/data_pipeline.2_temp.py  
+dags/data_pipeline.py  # hf_data_pipeline.py  
+dags/__pycache__  
+dags/test_dot_envr.py
