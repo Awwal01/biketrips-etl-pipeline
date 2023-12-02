@@ -147,4 +147,15 @@ delete_app = EmrServerlessDeleteApplicationOperator(
 
 delete_app.waiter_check_interval_seconds = 1
 
+# Optional
+# copy_to_redshift = S3ToRedshiftOperator(
+#     task_id='copy_to_redshift',
+#     schema='public',
+#     table='bike_trip',
+#     s3_bucket=S3_BUCKET_NAME,
+#     s3_key=test/output_dag/2023-11-29-14-41',
+#     copy_options=["FORMAT AS PARQUET"],
+#     dag=dag,
+# )
+
 s3_sensor >> glue_crawler >> glue_job >> emr_serverless_app >> wait_for_app_creation >> start_job >> stop_app >> delete_app
