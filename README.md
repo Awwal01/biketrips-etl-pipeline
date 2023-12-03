@@ -34,13 +34,17 @@ Prerequisite
 ### Installation steps 
 #### Docker Compose Installation.
 You can use this script /airflow/docker-compose-installation-script.sh to install docker and docker composer on your cloud9 environment.
-```mkdir airflow && cd airflow && bash docker-compose-installation-script.sh```. 
+```
+mkdir airflow && cd airflow && bash docker-compose-installation-script.sh
+``` 
 Docker composes comes with docker desktop if using a Windows device, see this link ([docker/compose: Define and run multi-container applications with Docker (github.com)](https://github.com/docker/compose)) reference to docker compose installation. 
 #### Airflow Installation
 Non-relevant services to our project in original airflow docker-compose.yaml file were commented out like Celery. Also, the environment variables in .env files were passed to docker-compose using env_file
 You can install airflow services using the scipt in /airflow/airflow-installation.sh
 run 
-```cd /airflow && bash airflow-installation.sh```.
+```
+cd /airflow && bash airflow-installation.sh
+```
 see this link for more details on airflow installation on docker [airflow official docker installation link]([Running Airflow in Docker — Airflow Documentation (apache.org)](https://airflow.apache.org/docs/apache-airflow/stable/howto/docker-compose/index.html)) and this video too  [(15) Airflow Tutorial for Beginners - Full Course in 2 Hours 2022 - YouTube](https://www.youtube.com/watch?v=K9AnJ9_ZAXE). 
 
 ### Cloud9 SetUP
@@ -56,9 +60,9 @@ Link to source of data set -
 
 ## DAG Diagram
 
-![Pasted image 20231203101106](https://github.com/Awwal01/biketrips-etl-pipeline/assets/53828785/fd02c399-72e2-4dda-8051-23c57e665015)
-
 ![image](https://github.com/Awwal01/biketrips-etl-pipeline/assets/53828785/227965a2-59c5-4e93-ae76-31a86b04712c)
+
+![Pasted image 20231203101106](https://github.com/Awwal01/biketrips-etl-pipeline/assets/53828785/fd02c399-72e2-4dda-8051-23c57e665015)
 
 ## Infrastructure As Code
 The project leverages CloudFormation as an Infrastructure as its code tool.
