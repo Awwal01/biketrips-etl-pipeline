@@ -1,0 +1,282 @@
+Description: This template has been created to setup an Airflow Environment , and it deploys the following resources S3, Redshift and relevant IAM roles 
+#reference: https://ws-assets-prod-iad-r-iad-ed304a55c2ca1aee.s3.us-east-1.amazonaws.com/795e88bb-17e2-498f-82d1-2104f4824168/team-cfn.yml
+
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  DatabaseName:
+    Description: The name of the first database to be created when the cluster is
+      created
+    Type: String
+    Default: dev
+    AllowedPattern: "([a-z]|[0-9])+"
+  AdminUsername:
+    Description: The user name that is associated with the admin user account for the cluster that is being created
+    Type: String
+    Default: awsuser
+    AllowedPattern: "([a-z])([a-z]|[0-9])*"
+  AdminPassword:
+    Description: The password that is associated with the admin user account for the cluster that is being created. Default is Awsuser123
+    Type: String
+    Default: Awsuser123
+    NoEcho: 'true'
+    MinLength: 8
+    MaxLength: 64
+    AllowedPattern: '^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[^\x00-\x20\x22\x27\x2f\x40\x5c\x7f-\uffff]+'
+  BaseRPU:
+    Description: Base RPU for Redshift Serverless Workgroup.
+    Type: Number
+    MinValue: 32
+    MaxValue: 512
+    Default: 32
+    AllowedValues: [32,40,48,56,64,72,80,88,96,104,112,120,128,136,144,152,160,168,176,184,192,200,208,216,224,232,240,248,256,264,272,280,288,296,304,312,320,328,336,344,352,360,368,376,384,392,400,408,416,424,432,440,448,456,464,472,480,488,496,504,512]
+
+Resources:
+  # Create IAM roles for Glue, EMR, Redshift
+  AWSGlueServiceRoleDefault:
+    Properties:
+      RoleName: AWSGlueServiceRoleDefault
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - glue.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole'
+        - 'arn:aws:iam::aws:policy/AmazonS3FullAccess'
+    Type: 'AWS::IAM::Role'
+    DeletionPolicy: Delete
+	
+  EMRDefaultRole:
+    Properties:
+      RoleName: EMR_DefaultRole
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - elasticmapreduce.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonElasticMapReduceRole'
+        - 'arn:aws:iam::aws:policy/AmazonS3FullAccess'
+    Type: 'AWS::IAM::Role'
+    DeletionPolicy: Delete
+	
+  # Create S3 BUCKET, and setup folders plus copy required objects using Lambda
+  EnvironmentBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Join [ '-', [ airflow, !Select [2, !Split ['/', !Ref AWS::StackId]], bucket ] ] 
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: True
+        BlockPublicPolicy: True
+        IgnorePublicAcls: True
+        RestrictPublicBuckets: True
+		
+  S3CustomResource:
+    Type: Custom::S3CustomResource
+    Properties:
+      ServiceToken: !GetAtt AWSLambdaFunction.Arn
+      the_bucket: !Ref EnvironmentBucket
+      dirs_to_create: [ dags, data, plugins, requirements, scripts, scripts/emr, scripts/glue ]
+  
+
+  AWSLambdaFunction:
+     Type: "AWS::Lambda::Function"
+     Properties:
+       Description: "Work with S3 Buckets!"
+       FunctionName: !Join [ '-', [ !Select [2, !Split ['/', !Ref AWS::StackId]], lambda ] ] 
+       Handler: index.handler
+       Role: !GetAtt AWSLambdaExecutionRole.Arn
+       Timeout: 360
+       Runtime: python3.9
+       Code:
+         ZipFile: |
+          import boto3
+          import cfnresponse
+          def handler(event, context):
+              # Init ...
+              the_event = event['RequestType']
+              print("The event is: ", str(the_event))
+              response_data = {}
+              s_3 = boto3.client('s3')
+              # Retrieve parameters
+              the_bucket = event['ResourceProperties']['the_bucket']
+              dirs_to_create = event['ResourceProperties']['dirs_to_create']
+
+              try:
+                  if the_event in ('Create', 'Update'):
+                      print("Requested folders: ", str(dirs_to_create))
+                      for dir_name in dirs_to_create:
+                          print("Creating: ", str(dir_name))
+                          s_3.put_object(Bucket=the_bucket,
+                                         Key=(dir_name
+                                              + '/'))
+                      copy_req_object = {'Bucket': 'ws-assets-prod-iad-r-iad-ed304a55c2ca1aee', 'Key': '795e88bb-17e2-498f-82d1-2104f4824168/requirements/requirements_263.txt'}
+                      s_3.copy_object(CopySource=copy_req_object, Bucket=the_bucket, Key='requirements/requirements_263.txt')
+
+                  elif the_event == 'Delete':
+                      print("Deleting S3 content...")
+                      b_operator = boto3.resource('s3')
+                      b_operator.Bucket(str(the_bucket)).objects.all().delete()
+                  # Everything OK... send the signal back
+                  print("Execution succesfull!")
+                  cfnresponse.send(event,
+                                   context,
+                                   cfnresponse.SUCCESS,
+                                   response_data)
+              except Exception as e:
+                  print("Execution failed...")
+                  print(str(e))
+                  response_data['Data'] = str(e)
+                  cfnresponse.send(event,
+                                   context,
+                                   cfnresponse.FAILED,
+                                   response_data)
+	
+  AWSLambdaExecutionRole:
+     Type: AWS::IAM::Role
+     Properties:
+       AssumeRolePolicyDocument:
+         Statement:
+         - Action:
+           - sts:AssumeRole
+           Effect: Allow
+           Principal:
+             Service:
+             - lambda.amazonaws.com
+         Version: '2012-10-17'
+       Path: "/"
+       Policies:
+       - PolicyDocument:
+           Statement:
+           - Action:
+             - logs:CreateLogGroup
+             - logs:CreateLogStream
+             - logs:PutLogEvents
+             Effect: Allow
+             Resource: arn:aws:logs:*:*:*
+           Version: '2012-10-17'
+         PolicyName: !Sub ${AWS::StackName}-${AWS::Region}-AWSLambda-CW
+       - PolicyDocument:
+           Statement:
+           - Action:
+             - s3:PutObject
+             - s3:DeleteObject
+             - s3:GetObject
+             - s3:List*
+             Effect: Allow
+             Resource: '*'
+           Version: '2012-10-17'
+         PolicyName: !Sub ${AWS::StackName}-${AWS::Region}-AWSLambda-S3
+       RoleName: !Sub ${AWS::StackName}-${AWS::Region}-AWSLambdaExecutionRole
+	   
+  # Create the Redshift Environment
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+  Subnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      MapPublicIpOnLaunch: true
+      CidrBlock: 10.0.0.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      VpcId:
+        Ref: VPC
+  Subnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      MapPublicIpOnLaunch: true
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      VpcId:
+        Ref: VPC
+  Subnet3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      MapPublicIpOnLaunch: true
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [2, !GetAZs ""]
+      VpcId:
+        Ref: VPC
+  Subnet4:
+      Type: AWS::EC2::Subnet
+      Properties:
+        MapPublicIpOnLaunch: true
+        CidrBlock: 10.0.3.0/24
+        AvailabilityZone: !Select [3, !GetAZs ""]
+        VpcId:
+          Ref: VPC
+
+  RedshiftServerlessNamespace:
+    Type: 'AWS::RedshiftServerless::Namespace'
+    Properties:
+      AdminUsername:
+        Ref: AdminUsername
+      AdminUserPassword:
+        Ref: AdminPassword
+      DbName:
+        Ref: DatabaseName
+      NamespaceName:  !Sub
+          - 'namespace-${RandomGUID}'
+          - { RandomGUID: !Select [0, !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId ]]]] }
+      IamRoles:
+        - !GetAtt 'RedshiftRole.Arn'
+      DefaultIamRoleArn: !GetAtt 'RedshiftRole.Arn'
+  RedshiftServerlessWorkgroup:
+    Type: 'AWS::RedshiftServerless::Workgroup'
+    Properties:
+      WorkgroupName: !Sub
+          - 'workgroup-${RandomGUID}'
+          - { RandomGUID: !Select [0, !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId ]]]] }
+      NamespaceName:  !Sub
+          - 'namespace-${RandomGUID}'
+          - { RandomGUID: !Select [0, !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId ]]]] }
+      BaseCapacity:
+        Ref: BaseRPU
+      PubliclyAccessible: 'false'
+      SubnetIds:
+        - Ref: Subnet1
+        - Ref: Subnet2
+        - Ref: Subnet3
+        - Ref: Subnet4
+      SecurityGroupIds:
+        - Ref: SecurityGroup
+    DependsOn:
+      - RedshiftServerlessNamespace
+  RedshiftServerlessSecret:
+    Type: 'AWS::SecretsManager::Secret'
+    Properties:
+      Name: RedshiftServerlessSecret
+      Description: This secret is for Redshift Serverless 
+      SecretString: '{"username":"awsuser","password":"Awsuser123"}'
+      Tags:
+        -
+          Key: RedshiftDataFullAccess
+          Value: serverless    
+
+Outputs:
+  NamespaceName:
+    Description: Namespace Name
+    Value:
+      Ref: RedshiftServerlessNamespace
+  Workgroupname:
+    Description: Workgroup Name
+    Value:
+      Ref: RedshiftServerlessWorkgroup
+	  
+  RedshiftServerlessEndpoint:
+    Description: Redshift Serverless endpoint
+    Value: 
+      Fn::Join: 
+        - ':'
+        - - Fn::GetAtt: [RedshiftServerlessWorkgroup, Workgroup.Endpoint.Address]
+          - "5439"   
