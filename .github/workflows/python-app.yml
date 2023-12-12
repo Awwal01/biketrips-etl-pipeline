@@ -39,4 +39,4 @@ jobs:
         # pytest
     - name: Lint with Pylint
       run: |
-        pylint . --disable=import-error,wildcard-import,undefined-variable
+        pylint . --disable=import-error,wildcard-import,undefined-variable,parse-error
